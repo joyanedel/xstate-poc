@@ -1,9 +1,6 @@
 import { createMachine, createActor, assign } from "xstate"
 import { v4 } from "uuid"
-
-let currentSnapshot: Feedback | undefined
-let xstateSnapshot: any
-let events: any[] = []
+import { saveSnapshotInDB, storeInDB } from "./db"
 
 interface FeedbackComment {
     authorId: string
@@ -63,22 +60,30 @@ const feedbackActor = createActor(feedbackMachine, {
         if (event.type !== "@xstate.event") return
         if (event.event.type === "xstate.init") return
 
-        // store event, saving the event is up to us
-        events.push({
-            eventStoreId: 'FEEDBACK',
-            event: event.event.type,
-            payload: event.event.payload,
-            timestamp: new Date(),
-        })
+        storeInDB(event.event)
     },
 })
 feedbackActor.subscribe({
     next: (snapshot) => {
-        currentSnapshot = snapshot.context
-        xstateSnapshot = snapshot
+        saveSnapshotInDB(snapshot)
     }
 })
 feedbackActor.start()
+
+const feedbackActor2 = createActor(feedbackMachine, {
+    inspect: (event) => {
+        if (event.type !== "@xstate.event") return
+        if (event.event.type === "xstate.init") return
+
+        storeInDB(event.event)
+    }
+})
+feedbackActor2.subscribe({
+    next: (snapshot) => {
+        saveSnapshotInDB(snapshot)
+    }
+})
+feedbackActor2.start()
 
 
 // Submit feedback
@@ -107,34 +112,4 @@ feedbackActor.send({
     }
 })
 feedbackActor.stop()
-
-console.log("currentSnapshot first actor", currentSnapshot)
-console.log("events", events)
-
-// Send acts like a command for only one entity at a time
-// Can't handle business logic about an event
-
-// recreate a second actor from events
-const feedbackActor2 = createActor(feedbackMachine)
-feedbackActor2.start()
-
-// replay events
-events.forEach(event => {
-    feedbackActor2.send({
-        type: event.event,
-        payload: event.payload,
-    })
-})
-
 feedbackActor2.stop()
-console.log("currentSnapshot second actor", feedbackActor2.getPersistedSnapshot())
-
-// recreate a third actor from a snapshot
-// can't recreate an actor without an xstate snapshot
-const feedbackActor3 = createActor(feedbackMachine, {
-    snapshot: xstateSnapshot,
-})
-console.log("currentSnapshot third actor", feedbackActor3.getPersistedSnapshot())
-
-// for every aggregate we need to create a new actor
-// every state machine is not that lightweight and shouldn't be used for every aggregate

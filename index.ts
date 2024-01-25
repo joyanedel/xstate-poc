@@ -15,7 +15,7 @@ interface Feedback {
     comments: FeedbackComment[]
 }
 
-// Define the state machine
+// Definicion de las maquinas de estados.
 const feedbackMachine = createMachine({
     id: "feedback",
     initial: "NO_FEEDBACK",
@@ -54,12 +54,19 @@ const feedbackMachine = createMachine({
     },
 })
 
-// Create the actor
+/*Creacion de una instancia: en Castore se manejan dentro de los comandos
+que se ejecutan, utilizando al eventStore relacionado. Luego el eventStore es el
+encargado de guardar y administrar los aggregates. Acá tenemos que administrarlos
+nosotros mismos.*/
 const feedbackActor = createActor(feedbackMachine, {
     inspect: (event) => {
         if (event.type !== "@xstate.event") return
         if (event.event.type === "xstate.init") return
 
+        /*Debo crear manualmente la funcion que guarda los eventos en la bd. Esta
+        no solo se debe preocupar de adaptar (como en Castore), sino que también debe
+        preocuparse de manejar eventos que tengan dependencias (antes de manejaban con
+        pushEventGroup)*/
         storeInDB(event.event)
     },
 })
@@ -74,7 +81,6 @@ const feedbackActor2 = createActor(feedbackMachine, {
     inspect: (event) => {
         if (event.type !== "@xstate.event") return
         if (event.event.type === "xstate.init") return
-
         storeInDB(event.event)
     }
 })
@@ -86,7 +92,13 @@ feedbackActor2.subscribe({
 feedbackActor2.start()
 
 
-// Submit feedback
+/* Para cambiar el estado de las instancias, debo tomar la instancia en particular y cambiar su estado,
+teniendo que manejar manualmente todas las implicancias de este. En Castore estos cambios se hacen 
+manteniendo la sincronicidad, debido a las definiciones de los comandos.
+
+Eventualmente podríamos crear un comando para que maneje los cambios de estados de este tipo de 
+instancia, sin embargo, no existe un comando de pushEventGroup, por lo que tendríamos que 
+recrearlo manualmente.*/
 feedbackActor.send({
     type: "ADD_FEEDBACK",
     payload: {
@@ -97,7 +109,6 @@ feedbackActor.send({
     }
 })
 
-// Approve feedback
 feedbackActor.send({
     type: "APPROVE",
 })
